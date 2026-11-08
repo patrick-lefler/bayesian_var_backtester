@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bayesian VaR Backtester</title>
+<meta name="description" content="Breach rates, Basel zones, and their uncertainty, updated every 25 trading days. A Bayesian take on VaR backtesting.">
+<link rel="canonical" href="https://patrick-lefler.com/bayesian_var_backtester/">
+<!-- Link previews (Open Graph: LinkedIn, Facebook, Substack, Slack, iMessage) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Seeking Eureka">
+<meta property="og:title" content="Bayesian VaR Backtester">
+<meta property="og:description" content="Breach rates, Basel zones, and their uncertainty, updated every 25 trading days. A Bayesian take on VaR backtesting.">
+<meta property="og:url" content="https://patrick-lefler.com/bayesian_var_backtester/">
+<meta property="og:image" content="https://patrick-lefler.com/bayesian_var_backtester/preview.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Bayesian VaR Backtester showing the forecast distribution of year-end VaR breaches across the Basel green, yellow, and red zones">
+<!-- X / Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Bayesian VaR Backtester">
+<meta name="twitter:description" content="Breach rates, Basel zones, and their uncertainty, updated every 25 trading days. A Bayesian take on VaR backtesting.">
+<meta name="twitter:image" content="https://patrick-lefler.com/bayesian_var_backtester/preview.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Bayesian VaR Backtester</h1>
+      <p class="sub">Breach rates, Basel zones, and their uncertainty, updated every 25 trading days.</p>
+    </div>
+    <span class="tag mono">BETA-BINOMIAL · 99% VaR</span>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" role="tab" aria-selected="true" data-tab="sim">Simulator</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="guide">Guide &amp; Math</button>
+  </nav>
+
+  <!-- ================= SIMULATOR ================= -->
+  <main id="tab-sim" class="tabpanel">
+    <div class="grid">
+      <div class="col-left">
+        <!-- Prior -->
+        <section class="card">
+          <div class="card-head">
+            <h2>Prior: Two Previous Backtest Years</h2>
+            <button class="link-btn danger" id="resetBtn">Reset defaults</button>
+          </div>
+          <div class="season-grid" id="yearGrid">
+            <div class="season">
+              <div class="season-label">Year 1 <span class="muted">· two years ago</span></div>
+              <div class="pair">
+                <label>Breaches<input class="num" id="b1" inputmode="numeric" value="3"></label>
+                <label>Trading days<input class="num" id="d1" inputmode="numeric" value="250"></label>
+              </div>
+              <div class="season-avg mono" id="r1">1.20% breach rate</div>
+            </div>
+            <div class="season">
+              <div class="season-label">Year 2 <span class="muted">· last year</span></div>
+              <div class="pair">
+                <label>Breaches<input class="num" id="b2" inputmode="numeric" value="2"></label>
+                <label>Trading days<input class="num" id="d2" inputmode="numeric" value="250"></label>
+              </div>
+              <div class="season-avg mono" id="r2">0.80% breach rate</div>
+            </div>
+          </div>
+          <p class="hint" id="claimNote" hidden>The model's-claim prior ignores the two backtest years and centers on the 1% breach rate a 99% VaR promises.</p>
+
+          <details class="weights" id="weightsBox">
+            <summary>
+              <span>Prior source &amp; weights</span>
+              <span class="mono muted" id="weightSummary">Y1 0.40 · Y2 0.50 → 225 pseudo-days</span>
+            </summary>
+            <div class="weights-body">
+              <div class="presets">
+                <button class="chip" data-preset="weighted">Weighted 0.4 / 0.5</button>
+                <button class="chip" data-preset="pooled">Pooled 1.0 / 1.0</button>
+                <button class="chip" data-preset="recent">Last year only</button>
+                <button class="chip" data-preset="claim">Model's claim (1%)</button>
+              </div>
+              <div id="weightSliders">
+                <label class="slider-row">
+                  <span>Year 1 weight</span>
+                  <input type="range" id="w1" min="0" max="1" step="0.05" value="0.4">
+                  <span class="mono" id="w1v">0.40</span>
+                </label>
+                <label class="slider-row">
+                  <span>Year 2 weight</span>
+                  <input type="range" id="w2" min="0" max="1" step="0.05" value="0.5">
+                  <span class="mono" id="w2v">0.50</span>
+                </label>
+                <p class="hint">Lower weights make the prior easier to move. Higher weights make it stubborn.</p>
+              </div>
+              <div id="claimSlider" hidden>
+                <label class="slider-row">
+                  <span>Claim strength</span>
+                  <input type="range" id="cn" min="100" max="1000" step="50" value="500">
+                  <span class="mono" id="cnv">500</span>
+                </label>
+                <p class="hint">Pseudo-days of trust in the model's 1% claim. 500 days is two years of perfect behavior.</p>
+              </div>
+            </div>
+          </details>
+
+          <div class="prior-result mono" id="priorResult"></div>
+          <div class="msgs" id="priorMsgs" aria-live="polite"></div>
+        </section>
+
+        <!-- Stepper -->
+        <section class="card">
+          <div class="card-head">
+            <h2>Step Through the Year</h2>
+            <span class="mono muted" id="dayLabel">After day 150</span>
+          </div>
+          <div class="stepper">
+            <button class="icon-btn" id="prevBtn" aria-label="Previous 25 days">‹</button>
+            <input type="range" id="stepRange" min="0" max="10" step="1" value="6" aria-label="Trading days elapsed">
+            <button class="icon-btn" id="nextBtn" aria-label="Next 25 days">›</button>
+            <button class="play-btn" id="playBtn">Play</button>
+          </div>
+          <div class="ticks mono"><span>Pre</span><span>50</span><span>100</span><span>150</span><span>200</span><span>250</span></div>
+        </section>
+
+        <!-- KPIs -->
+        <section class="kpis">
+          <div class="kpi">
+            <div class="kpi-label">1 · 25-day breach rate</div>
+            <div class="kpi-val mono" id="k1"></div>
+            <div class="kpi-sub mono" id="k1s"></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">2 · Year-to-date rate</div>
+            <div class="kpi-val mono" id="k2"></div>
+            <div class="kpi-sub mono" id="k2s"></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">θ · True breach rate</div>
+            <div class="kpi-val mono" id="k4"></div>
+            <div class="kpi-sub mono" id="k4s"></div>
+          </div>
+          <div class="kpi accent kpi-wide">
+            <div class="kpi-label">3 · Bayes forecast: Basel zone at day 250</div>
+            <div class="zone-bar" id="k3bar" aria-hidden="true"></div>
+            <div class="zone-pcts mono" id="k3"></div>
+            <div class="kpi-sub mono" id="k3s"></div>
+          </div>
+        </section>
+
+        <!-- Clustering -->
+        <section class="card cluster-card">
+          <div class="card-head">
+            <h2>Clustering Check</h2>
+            <span class="flag mono" id="clusterFlag"></span>
+          </div>
+          <p class="small muted" id="clusterTxt"></p>
+        </section>
+
+        <!-- Walkthrough -->
+        <section class="card">
+          <div class="card-head"><h2>The Calculation, Step by Step</h2></div>
+          <ol class="steps" id="steps"></ol>
+        </section>
+      </div>
+
+      <div class="col-right">
+        <!-- Uncertainty -->
+        <section class="card">
+          <div class="card-head">
+            <h2>4 · Uncertainty Curve: Breaches at Day 250</h2>
+          </div>
+          <svg id="curveChart" class="chart" viewBox="0 0 640 300" role="img" aria-label="Forecast distribution of year-end VaR breaches by Basel zone"></svg>
+          <div class="legend mono">
+            <span><i class="sw zbox zg"></i>Green 0–4</span>
+            <span><i class="sw zbox zy"></i>Yellow 5–9</span>
+            <span><i class="sw zbox zr"></i>Red 10+</span>
+            <span><i class="sw dash"></i>Preseason</span>
+            <span><i class="sw faint"></i>Earlier windows</span>
+            <span><i class="sw sofar"></i>Breaches so far</span>
+          </div>
+          <div class="var-split" id="varSplit"></div>
+        </section>
+
+        <!-- Zone trajectory -->
+        <section class="card">
+          <div class="card-head"><h2>Zone Forecast Through the Year</h2></div>
+          <svg id="zoneChart" class="chart" viewBox="0 0 640 200" role="img" aria-label="Probability of each Basel zone at day 250, by window"></svg>
+          <div class="legend mono">
+            <span><i class="sw zbox zg"></i>P(green)</span>
+            <span><i class="sw zbox zy"></i>P(yellow)</span>
+            <span><i class="sw zbox zr"></i>P(red)</span>
+          </div>
+        </section>
+
+        <!-- Rate trajectory -->
+        <section class="card">
+          <div class="card-head"><h2>Breach Rate Trajectory</h2></div>
+          <svg id="trajChart" class="chart" viewBox="0 0 640 260" role="img" aria-label="Breach rate trajectory with Bayesian estimate of the true rate"></svg>
+          <div class="legend mono">
+            <span><i class="sw dot"></i>25-day rate</span>
+            <span><i class="sw sseason"></i>Year-to-date rate</span>
+            <span><i class="sw main"></i>θ estimate</span>
+            <span><i class="sw band"></i>95% credible range</span>
+            <span><i class="sw claim"></i>1% claim</span>
+          </div>
+        </section>
+
+        <!-- Table -->
+        <section class="card">
+          <div class="card-head">
+            <h2>Backtest Log</h2>
+            <span class="muted small">Edit any breach count. Click a row to jump to it.</span>
+          </div>
+          <div class="table-wrap">
+            <table class="log">
+              <thead><tr><th>Days</th><th>Breaches</th><th>25-day</th><th>YTD</th><th>θ̂</th><th>Zone forecast</th><th>E (95%)</th></tr></thead>
+              <tbody id="logBody"></tbody>
+            </table>
+          </div>
+          <div class="msgs" id="logMsgs" aria-live="polite"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- ================= GUIDE ================= -->
+  <main id="tab-guide" class="tabpanel hidden">
+    <article class="guide">
+      <div id="guideDyn" class="guide-dyn"></div>
+
+      <section class="card">
+        <h2 class="g">8. Things to Try</h2>
+        <ul>
+          <li>Pick <b>Model's claim (1%)</b> and press Play. The trusting prior raises the alarm later, but it still raises it.</li>
+          <li>Step to day 150. The traffic light still reads green, with 4 breaches, yet the zone forecast already leans yellow.</li>
+          <li>Spread the 6 breaches from days 126–175 evenly across the year (for example, one in each of six windows). The year-end zone stays the same, but the clustering flag goes quiet. Counting alone can't tell those two years apart.</li>
+          <li>Set every current-year window to 0. Even a spotless year moves the estimate only slowly, because breaches are rare events.</li>
+        </ul>
+        <h3 class="g3">Input rules</h3>
+        <ul>
+          <li>Breaches and trading days must be whole numbers, with 0 ≤ breaches ≤ days. Each 25-day window allows 0–25 breaches.</li>
+          <li>Each prior year needs at least 1 trading day unless its weight is 0. α₀ and β₀ are floored at 0.5 so the Beta stays valid.</li>
+          <li>Prior years above 260 trading days get a soft warning. That's more than a calendar year of trading.</li>
+          <li>More than 5 breaches in one 25-day window gets a soft warning. That's extreme for a 99% model.</li>
+          <li>VaR confidence is fixed at 99%, and windows at 25 days, because the Basel zones are defined for 250 days at 99%.</li>
+        </ul>
+      </section>
+
+      <section class="card credits">
+        <h2 class="g">9. Sources &amp; Credits</h2>
+        <h3 class="g3">Regulatory framework</h3>
+        <ul>
+          <li><b>Basle Committee on Banking Supervision (1996), "Supervisory framework for the use of 'backtesting' in conjunction with the internal models approach to market risk capital requirements."</b> The source of the green, yellow, and red zones, the 250-day window, and the plus factors used here. <a href="https://www.bis.org/publications/199601-standards-supervisory-framework-use-backtesting-conjunction-internal-models-approach-market-risk-capital.pdf" target="_blank" rel="noopener">BIS (PDF)</a></li>
+          <li><b>Basel Framework, MAR32 and MAR99.</b> The current standard. It keeps the 250-day, 99% count but calls the middle zone "amber," and it applies a different multiplier scale under the Fundamental Review of the Trading Book. <a href="https://www.bis.org/committees/bcbs/basel-framework/81326/chapter.pdf" target="_blank" rel="noopener">MAR32 (PDF)</a> · <a href="https://www.bis.org/committees/bcbs/basel-framework/81307/chapter.pdf" target="_blank" rel="noopener">MAR99 (PDF)</a></li>
+        </ul>
+        <h3 class="g3">Backtesting methods</h3>
+        <ul>
+          <li><b>Paul H. Kupiec (1995), "Techniques for Verifying the Accuracy of Risk Measurement Models."</b> <span class="nowrap">Journal of Derivatives</span> 3(2): 73–84. The proportion-of-failures test, and the warning that rare tail events are hard to verify. <a href="https://doi.org/10.3905/jod.1995.407942" target="_blank" rel="noopener">DOI link</a> · <a href="https://fraser.stlouisfed.org/title/finance-economics-discussion-series-1491/techniques-verifying-accuracy-risk-measurement-models-717921" target="_blank" rel="noopener">Federal Reserve working paper</a></li>
+          <li><b>Peter F. Christoffersen (1998), "Evaluating Interval Forecasts."</b> <span class="nowrap">International Economic Review</span> 39(4): 841–862. The independence and conditional-coverage tests discussed in section 6. <a href="https://doi.org/10.2307/2527341" target="_blank" rel="noopener">DOI link</a></li>
+        </ul>
+        <h3 class="g3">Companion app</h3>
+        <ul>
+          <li><b>Bayes at the Plate.</b> The same Beta-Binomial engine, applied to a baseball batting average. <a href="https://patrick-lefler.com/bayes_batting_avg_learning_app/" target="_blank" rel="noopener">patrick-lefler.com</a></li>
+        </ul>
+        <h3 class="g3">Notes</h3>
+        <ul>
+          <li><b>Illustrative data.</b> The default backtest history is made up and doesn't represent any real bank, desk, or model.</li>
+          <li><b>No affiliation.</b> This app isn't affiliated with or endorsed by the Basel Committee, the BIS, any supervisor, or any author cited above.</li>
+          <li><b>Educational use only.</b> It's a teaching tool for Bayesian reasoning, not regulatory, compliance, or capital-planning advice.</li>
+          <li><b>Code and fonts.</b> All math and charts are original vanilla JavaScript and SVG, with no third-party libraries. The fonts are Inter and JetBrains Mono, used under the SIL Open Font License.</li>
+        </ul>
+      </section>
+    </article>
+  </main>
+
+  <footer class="foot muted small">Model: θ ~ Beta(α₀, β₀); breaches | θ ~ Binomial(days, θ); remaining breaches ~ Beta-Binomial(250 − days, α, β). Zones follow the 1996 Basel traffic light at 99% VaR over 250 days.<br>Illustrative data for education only; not regulatory or capital-planning advice. Not affiliated with the Basel Committee or the BIS. Built by Patrick Lefler · Seeking Eureka. See Guide &amp; Math, section 9, for sources.</footer>
+</div>
+<script src="app.js"></script>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  const DEFAULT_LINE_HEIGHT = 16;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  const PICK_CAPABILITIES = ["pick"];
+  const PICK_CHAIN_LENGTH = 4;
+  const PICK_MAX_TEXT_CHARS = 120;
+  const PICK_MAX_HTML_CHARS = 300;
+
+  function truncate(value, maxChars) {
+    return value.length > maxChars ? value.slice(0, maxChars - 1) + "…" : value;
+  }
+
+  function isPickableElement(element) {
+    return (
+      element instanceof Element &&
+      element !== document.documentElement &&
+      element !== document.body
+    );
+  }
+
+  function resolvePickTarget(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const element = document.elementFromPoint(x, y);
+    return isPickableElement(element) ? element.closest("svg") || element : null;
+  }
+
+  function pickLabel(element) {
+    if (element.id) return element.localName + "#" + element.id;
+    return [element.localName].concat(Array.from(element.classList).slice(0, 2)).join(".");
+  }
+
+  // Only attributes that help find the element in source. data-* values and URL
+  // query strings or fragments can carry tokens.
+  const PICK_ATTRIBUTES = new Set([
+    "id",
+    "class",
+    "name",
+    "type",
+    "role",
+    "alt",
+    "aria-label",
+    "href",
+    "src",
+  ]);
+
+  function pickAttributeValue(attribute) {
+    return attribute.name === "href" || attribute.name === "src"
+      ? attribute.value.split(/[?#]/)[0]
+      : attribute.value;
+  }
+
+  function describePickElement(element) {
+    const chain = [];
+    for (
+      let current = element;
+      isPickableElement(current) && chain.length < PICK_CHAIN_LENGTH;
+      current = current.parentElement
+    ) {
+      chain.unshift(current);
+    }
+    const attributes = Array.from(element.attributes)
+      .filter((attribute) => PICK_ATTRIBUTES.has(attribute.name))
+      .map((attribute) => ` ${attribute.name}="${pickAttributeValue(attribute).replace(/"/g, "&quot;")}"`)
+      .join("");
+    const text = (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+    return {
+      chain: chain.map(pickLabel),
+      html: truncate(`<${element.localName}${attributes}>`, PICK_MAX_HTML_CHARS),
+      text: text ? truncate(text, PICK_MAX_TEXT_CHARS) : undefined,
+    };
+  }
+
+  // Hover asks once per frame, and innerText on a large section forces layout,
+  // so only the rect is re-read while the pointer stays on the same element.
+  // Clicks ask for fresh details since the page may have changed the element.
+  let lastPick = null;
+
+  function describePickTarget(element, fresh) {
+    if (fresh || lastPick?.element !== element) {
+      lastPick = { element, details: describePickElement(element) };
+    }
+    const rect = element.getBoundingClientRect();
+    return {
+      rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      ...lastPick.details,
+    };
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      capabilities: PICK_CAPABILITIES,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_PICK") {
+      const element = resolvePickTarget(event.data.x, event.data.y);
+      postToTrustedTop({
+        type: "INLINE_EDIT_PICK_RESULT",
+        seq: event.data.seq,
+        target: element ? describePickTarget(element, event.data.fresh === true) : null,
+      });
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_BY") {
+      const { deltaX, deltaY, deltaMode } = event.data;
+      if (!scrollForwarding || !Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+      if (deltaMode !== 0 && deltaMode !== 1 && deltaMode !== 2) return;
+      const lineHeight =
+        parseFloat(getComputedStyle(document.documentElement).lineHeight) || DEFAULT_LINE_HEIGHT;
+      const scaleX = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerWidth : 1;
+      const scaleY = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerHeight : 1;
+      // The selection overlay receives the wheel event instead of this iframe.
+      // Instant scrolling preserves trackpad deltas even on smooth-scroll sites.
+      window.scrollBy({ left: deltaX * scaleX, top: deltaY * scaleY, behavior: "instant" });
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
+</html>

@@ -4,7 +4,7 @@ An interactive app for learning Bayesian updating through Value-at-Risk backtest
 
 The app is a teaching tool, not a validation or capital-planning system. It favors clear, visible math over regulatory precision.
 
-**Live app:** `https://patrick-lefler.com/bayesian_var_backtester/`
+**Live app:** https://seeking-eureka.com/bayesian-var-backtester
 
 ## What the App Shows
 

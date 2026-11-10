@@ -92,10 +92,6 @@ The app is plain JavaScript with hand-drawn SVG charts and no third-party librar
 - Paul H. Kupiec (1995), ["Techniques for Verifying the Accuracy of Risk Measurement Models,"](https://doi.org/10.3905/jod.1995.407942) Journal of Derivatives 3(2): 73–84. See also the [Federal Reserve working paper](https://fraser.stlouisfed.org/title/finance-economics-discussion-series-1491/techniques-verifying-accuracy-risk-measurement-models-717921).
 - Peter F. Christoffersen (1998), ["Evaluating Interval Forecasts,"](https://doi.org/10.2307/2527341) International Economic Review 39(4): 841–862.
 
-**Companion app**
-
-- [Bayes at the Plate](https://patrick-lefler.com/bayes_batting_avg_learning_app/) uses the same Beta-Binomial engine, applied to baseball batting averages.
-
 **Fonts:** [Inter](https://fonts.google.com/specimen/Inter) and [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono), used under the SIL Open Font License.
 
 ## Disclaimer

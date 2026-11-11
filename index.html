@@ -25,6 +25,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="userguide.css">
 </head>
 <body>
 <div class="wrap">
@@ -41,10 +42,16 @@
     </div>
   </header>
 
-  <nav class="tabs" role="tablist">
-    <button class="tab active" role="tab" aria-selected="true" data-tab="sim">Simulator</button>
-    <button class="tab" role="tab" aria-selected="false" data-tab="guide">Guide &amp; Math</button>
-  </nav>
+<div class="tabbar">
+    <nav class="tabs" role="tablist">
+      <button class="tab active" role="tab" aria-selected="true" data-tab="sim">Simulator</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="guide">Guide &amp; Math</button>
+    </nav>
+    <button type="button" class="ug-open-btn" data-userguide-open>
+      <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></svg>
+      User Guide
+    </button>
+  </div>
 
   <!-- ================= SIMULATOR ================= -->
   <main id="tab-sim" class="tabpanel">
@@ -281,5 +288,6 @@
   <footer class="foot muted small">Model: θ ~ Beta(α₀, β₀); breaches | θ ~ Binomial(days, θ); remaining breaches ~ Beta-Binomial(250 − days, α, β). Zones follow the 1996 Basel traffic light at 99% VaR over 250 days.<br>Illustrative data for education only; not regulatory or capital-planning advice. Not affiliated with the Basel Committee or the BIS. Built by Patrick Lefler · Seeking Eureka. See Guide &amp; Math, section 9, for sources.</footer>
 </div>
 <script src="app.js"></script>
+<script src="userguide.js" defer data-src="UserGuide.md" data-fallback="https://github.com/seeking-eureka/bayesian-var-backtester/blob/main/UserGuide.md"></script>
 </body>
 </html>

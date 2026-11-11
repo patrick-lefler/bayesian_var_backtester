@@ -6,7 +6,7 @@ Banks use a risk model called Value at Risk, or VaR, to answer a simple question
 
 On the remaining 1 day out of 100, losses go above that amount. This is called a breach. Breaches are normal. In a year with 250 trading days, a good model should have about 2 or 3 breaches.
 
-## Regulators track breaches using a traffic light system:
+Regulators track breaches using a traffic light system:
 
 | Zone | Breaches in 250 days | What it means |
 |---|---|---|
@@ -50,20 +50,20 @@ The sample data shows a story that’s worth exploring.
 
 A board that only watched the traffic light would have been surprised at year-end. With this app, they would have known months in advance.
 
-Things to Try
+## Things to Try
 
 * Press Play to watch the zone bar change month by month.
 * Change the breaches in one month from 0 to 3 and see how fast the forecast responds.
 * Open “Prior source & weights” and select “Model’s claim (1%).” This means the app starts by fully trusting the model. Notice how this slows the alarm but doesn’t stop it.
 
-Questions to Ask Your Risk Team
+## Questions to Ask Your Risk Team
 
 * What is the chance we end this year in yellow or red?
 * Are our breaches spread out, or clustered together?
 * If we land in yellow, how much more capital would we need to hold?
 * How much of our confidence comes from past years rather than this year?
 
-Limits to Keep in Mind
+## Limits to Keep in Mind
 
 * **This is a teaching tool.** It uses sample data, not actual results from a real bank.
 * **Clustering makes things look better than they are.** The forecast assumes breaches happen independently. If they cluster, the real range of outcomes is wider than the app suggests.

@@ -6,6 +6,8 @@ The app is a teaching tool, not a validation or capital-planning system. It favo
 
 **Live app:** https://seeking-eureka.com/bayesian-var-backtester
 
+**User guide:** click **User Guide** in the app, or go straight to it at https://seeking-eureka.com/bayesian-var-backtester/#guide
+
 ## What the App Shows
 
 After each 25-day window, the Simulator tab shows four results:
@@ -76,7 +78,12 @@ index.html   page structure and static guide content
 styles.css   dark theme and layout
 app.js       Beta-Binomial math, zone forecast, dispersion test, SVG charts, and dynamic guide text
 preview.png  link-preview image
+UserGuide.md plain-English user guide (source for the in-app User Guide panel)
+userguide.js renders UserGuide.md in a slide-over panel; opens on #guide
+userguide.css styles for the User Guide panel
 ```
+
+To update the in-app guide, edit `UserGuide.md` and push. The panel reads that file directly, so there's no HTML copy to keep in sync. The panel loads the guide with `fetch`, so it needs the app served over HTTP (GitHub Pages, or `python3 -m http.server` locally). If you open `index.html` straight from disk, the panel shows a link to the guide on GitHub instead.
 
 The app is plain JavaScript with hand-drawn SVG charts and no third-party libraries. Fonts load from Google Fonts. Without a connection, the browser falls back to system fonts.
 
